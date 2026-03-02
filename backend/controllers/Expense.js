@@ -1,6 +1,6 @@
-const IncomeSchema = require('../models/IncomeModel');
+const ExpenseSchema = require('../models/ExpenseModel');
 
-const addIncome = async (req, res) => {
+const addExpense = async (req, res) => {
     const { amount, description, date } = req.body;
 
     try {
@@ -19,8 +19,8 @@ const addIncome = async (req, res) => {
             });
         }
 
-        //create income record in the database 
-        const income = await IncomeSchema.create({
+        //create expanse record in the database 
+        const expense = await ExpenseSchema.create({
             amount,
             description,
             date
@@ -28,8 +28,8 @@ const addIncome = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            data: income,
-            date: income.date
+            data: expense,
+            date: expense.date
         });
     } 
     
@@ -41,12 +41,12 @@ const addIncome = async (req, res) => {
         });
     }
 }
-const getIncome = async (req, res) => {
+const getExpenses = async (req, res) => {
     try {
-        const income = await IncomeSchema.find().sort({ createdAt: -1 });
+        const expenses = await ExpenseSchema.find().sort({ createdAt: -1 });
         res.status(200).json({
             success: true,
-            data: income
+            data: expenses
         });
     } 
     
@@ -55,13 +55,13 @@ const getIncome = async (req, res) => {
     }
 }
 
-const deleteIncome = async (req, res) => {
+const deleteExpense = async (req, res) => {
 
     const { id } = req.params;
 
-    IncomeSchema.findByIdAndDelete(id)
+    ExpenseSchema.findByIdAndDelete(id)
     .then(() => {
-        res.status(200).json({message : 'Income record deleted successfully'});
+        res.status(200).json({message : 'expense record deleted successfully'});
     })
     .catch((error) => {
         console.error(error);
@@ -69,4 +69,4 @@ const deleteIncome = async (req, res) => {
     });
 }
 
-module.exports = { addIncome, getIncome , deleteIncome };   
+module.exports = { addExpense, getExpenses , deleteExpense };   
