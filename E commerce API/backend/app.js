@@ -12,25 +12,44 @@ app.use(bodyParser.json());
 app.use(morgan('tiny'));
 
 
+const productschema = mongoose.Schema({
+    name:String,
+    image:String,
+    Instock:Number
+})
+
+const Product = mongoose.model("Product", productschema);
 
 app.get('/',(req,res)=>{
     res.send("hello world!");
 })
 
-app.get(`${api}/products`,(req,res)=>{
-    const product = {
-        id:1,
-        name:"iphone 12",
-        image:"https://www.apple.com/v/iphone-12/f/images/overview/hero/iphone_12__d51ddqz0sm2e_large.jpg",
-        price:999
+app.get(`${api}/products`,async (req,res)=>{
+    const productList = await Product.find();
+
+    if(!productList){
+        res.status(500).json({success:false})
     }
-    res.send(product);
+
+    res.send(productList);
 })
 
 app.post(`${api}/products`,(req,res)=>{
-    const newproduct = req.body;
-    console.log(newproduct);
-    res.send(newproduct);
+    const product = new Product({
+        name:req.body.name,
+        image:req.body.image,
+        Instock:req.body.Instock
+    })
+
+    product.save().then((createdProduct)=>{
+        res.status(201).json(createdProduct);
+    })
+    .catch((err)=>{
+        res.status(500).json({
+            error:err,
+            success:false
+        })
+    })
 })
 
 mongoose.connect(process.env.CONNECTION_STRING)
