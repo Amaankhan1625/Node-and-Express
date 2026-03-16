@@ -5,6 +5,8 @@ require('dotenv/config');
 const api = process.env.API_URL;
 const bodyParser = require('body-parser');
 const morgan = require('morgan');
+const authJwt = require('./helper/JWT');
+const errorhandler = require('./helper/error-handler') 
 
 const productsRoute = require("./routes/product");
 const categoriesRoute = require("./routes/category");
@@ -14,7 +16,14 @@ const customerRoute = require("./routes/customer");
 //middle wares
 app.use(bodyParser.json());
 app.use(morgan('tiny'));
+app.use(authJwt());
 
+//authentication validation error
+app.use(errorhandler);
+    
+
+
+//routes
 app.use(`${api}/products`,productsRoute);
 app.use(`${api}/categories`,categoriesRoute);
 app.use(`${api}/orders`,orderRoute);

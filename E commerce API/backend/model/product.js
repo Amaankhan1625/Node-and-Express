@@ -13,7 +13,7 @@ const productschema = mongoose.Schema({
         type:String,
         required:true
     },
-    image:{
+    brand:{
         type:String
     },
     images:[{
@@ -26,7 +26,7 @@ const productschema = mongoose.Schema({
     },
     category:{
         type:mongoose.Schema.Types.ObjectId,
-        ref:"Category",
+        ref:"category",
         required:true
     },    
     Instock:{
@@ -51,7 +51,14 @@ const productschema = mongoose.Schema({
         type:Date,
         default:Date.now
     }
-})
+});
+
+productschema.virtual('id').get(function(){
+    return this._id.toHexString();
+});
+
+productschema.set('toJSON', {
+    virtuals: true
+});
+
 exports.Product = mongoose.model("Product", productschema);
-
-
