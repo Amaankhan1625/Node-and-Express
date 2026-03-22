@@ -2,57 +2,67 @@ const mongoose = require("mongoose");
  
 
 const orderschema = mongoose.Schema({
-      name:{
-          type:String,
-          required:true
-      },
-      color:{
-          type:String,
-          required:true
-      },
-      icon:{
-          type:String,
-          required:true
-      },
-      image:{
-          type:String
-      },
-      images:[{
-          type:String,
-          default:""
-      }],
-      price:{
-          type:Number,
-          required:true
-      },
-      category:{
-          type:mongoose.Schema.Types.ObjectId,
-          ref:"Category",
-          required:true
-      },    
-      Instock:{
-          type:Number,
-          required:true,
-          min:0,
-          max:255
-      },
-      numReviews:{
-          type:Number,
-          default:0
-      },
-      rating:{
-          type:Number,
-          default:0
-      },
-      isFeatured:{
-          type:Boolean,
-          default:false
-      },
-      dateCreated:{
-          type:Date,
-          default:Date.now
-      }
+     
+    orderItem : [{
+      type:mongoose.Schema.Types.ObjectId,
+      ref:'OrderItem',
+      required:true
+    }],
+
+    shippingAdd1:{
+        type:String,
+        required:true
+    },
+
+     shippingAdd2:{
+        type:String,
+        required:true
+    },
+     city:{
+        type:String,
+        required:true
+    },
+      zip:{
+        type:String,
+        required:true
+    },
+      country:{
+        type:String,
+        required:true
+    },
+      phone:{
+        type:String,
+        required:true
+    },
+      status:{
+        type:String,
+        required:true
+    },
+     totalprice:{
+        type:Number,
+        required:true
+    },
+    customer:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"Customer",
+        required:true
+    },
+    datecreated:{
+      type:Date,
+      deafault:Date.now()
+    }
 })
+orderschema.virtual('id').get(function(){
+    return this._id.toHexString();
+});
+
+orderschema.set('toJSON', {
+    virtuals: true
+});
+
+    
+
+
 exports.Order = mongoose.model("Order", orderschema);
 
 

@@ -3,6 +3,9 @@ const router = express.Router();
 const {Customer}= require("../model/customer");
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const { Product } = require('../model/product');
+
 
 
 
@@ -16,6 +19,19 @@ router.get('/',async (req,res)=>{
 
     res.send(customerList);
 })
+
+//get user count
+router.get('/getcount',async(req,res)=>{
+    const customercount = await Customer.countDocuments()
+    if(!customercount)
+    {
+        res.status(500).json({success:false})
+    }
+    res.send({
+        customercount:customercount
+    });
+})
+
 
 //get customer by id
 router.get('/:id',async (req,res)=>{
@@ -88,5 +104,20 @@ catch(error){
     res.status(500).json({message:"Server error"});
 }
 });
+
+//delete
+router.delete('/:id',async (req,res)=>{
+    const customer = await Product.findByIdAndDelete(req.params.id).then(customer=>{
+        mongoose.isValidObjectId(req.params.id) || res.status(400).json({success:false, message:"Invalid customer ID format"});
+
+        if(customer){
+            return res.status(200).json({success:true, message:"customer is deleted"});
+        }
+    })
+    .catch(err=>{
+        return res.status(500).json({success:false, message:err}); 
+    })
+})
+
 
 module.exports = router;
