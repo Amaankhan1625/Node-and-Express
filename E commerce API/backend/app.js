@@ -12,6 +12,8 @@ const productsRoute = require("./routes/product");
 const categoriesRoute = require("./routes/category");
 const orderRoute = require("./routes/order");
 const customerRoute = require("./routes/customer");
+const cartRoute = require("./routes/cart");
+const paymentRoute = require("./routes/payment");
 
 //middle wares
 app.use(bodyParser.json());
@@ -28,7 +30,8 @@ app.use(`${api}/products`,productsRoute);
 app.use(`${api}/categories`,categoriesRoute);
 app.use(`${api}/orders`,orderRoute);
 app.use(`${api}/customers`,customerRoute);
-
+app.use(`${api}/cart`,cartRoute);
+app.use(`${api}/payments`,paymentRoute);
 const Product = require("./model/product");
 
 
