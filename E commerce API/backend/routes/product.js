@@ -4,6 +4,34 @@ exports.router = router;
 const {Product}= require("../model/product");
 const {Category}= require("../model/category");
 const mongoose = require("mongoose");
+const multer = require('multer');
+
+
+const FILE_TYPE_MAP = {
+    'image/png': 'png',
+    'image/jpeg': 'jpeg',
+    'image/jpg': 'jpg'
+};
+
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const isValid = FILE_TYPE_MAP[file.mimetype]
+    let uploadError = new Error("invalid image");
+    if(isValid){
+        uploadError = null
+    }
+    cb(null, './public/uploads')
+  },
+  filename: function (req, file, cb) {
+    const filename = file.originalname.split(' ').join('-');
+    const extension = FILE_TYPE_MAP[file.mimetype];
+    cb(null, `${filename}-${Date.now()}.${extension}`);
+  }
+})
+
+const uploadoptions= multer({ storage: storage })
+
 
 //GET ALL
 router.get('/',async (req,res)=>{
@@ -69,12 +97,14 @@ router.post('/',async (req,res)=>{
     try {
         const category = await Category.findById(req.body.category);
         if(!category) return res.status(400).json({success:false, message:"Category not found in database"});
+        const filename = req.file.filename
+        const basepath = `${req.protocol}://${req.get('host')}/public/uploads/`;
 
         let product = new Product({
             name:req.body.name,
             description:req.body.description,
             richdescription:req.body.richdescription,
-            image:req.body.image,
+            image:`${basepath}${filename}`,//"http://localhost:3000/public/uploads/image-1687945678901`,"
             brand:req.body.brand,
             Instock:req.body.Instock,
             price:req.body.price,
@@ -146,6 +176,14 @@ router.delete('/:id',async (req,res)=>{
         return res.status(500).json({success:false, message:err}); 
     })
 })
+
+
+
+
+
+
+
+
 
 
 module.exports = router;
