@@ -7,12 +7,6 @@ const mongoose = require("mongoose");
 const multer = require('multer');
 
 
-
-
-
-
-
-
 //GET ALL
 router.get('/',async (req,res)=>{
     let filter = {};
@@ -156,14 +150,6 @@ router.delete('/:id',async (req,res)=>{
         return res.status(500).json({success:false, message:err}); 
     })
 })
-
-
-
-
-
-
-
-
 
 
 module.exports = router;

@@ -1,80 +1,31 @@
 const express = require('express');
 const router = express.Router();
-const { Cart } = require("../model/cart");
-const { Product } = require("../model/product");
-const mongoose = require("mongoose");
+const cartService = require('../services/cartService');
 
 // GET - Retrieve all cart items for a customer
 router.get('/:customerId', async (req, res) => {
     try {
         const { customerId } = req.params;
 
-        if (!mongoose.Types.ObjectId.isValid(customerId)) {
-            return res.status(400).json({ success: false, message: "Invalid customer ID" });
-        }
-
-        const cartItems = await Cart.find({ customer: customerId })
-            .populate('product')
-            .populate('customer');
-
-        if (!cartItems) {
-            return res.status(404).json({ success: false, message: "Cart not found" });
-        }
-
-        // Calculate total price
-        let totalPrice = 0;
-        const cartWithTotal = cartItems.map(item => {
-            const itemTotal = item.product.price * item.quantity;
-            totalPrice += itemTotal;
-            return {
-                ...item.toJSON(),
-                itemTotal
-            };
-        });
+        const cartSummary = await cartService.getCartByCustomerId(customerId);
 
         res.status(200).json({
             success: true,
             message: "Cart retrieved successfully",
-            cart: cartWithTotal,
-            totalItems: cartItems.length,
-            totalPrice: totalPrice
+            cart: cartSummary.cart,
+            totalItems: cartSummary.totalItems,
+            totalPrice: cartSummary.totalPrice
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        const statusCode = error.message.includes('Invalid customer ID') ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 });
 
 // POST - Add item to cart
 router.post('/add', async (req, res) => {
     try {
-        const { productId, customerId, quantity } = req.body;
-
-        if (!productId || !customerId || !quantity) {
-            return res.status(400).json({ success: false, message: "Missing required fields" });
-        }
-
-        // Check if product exists
-        const product = await Product.findById(productId);
-        if (!product) {
-            return res.status(404).json({ success: false, message: "Product not found" });
-        }
-
-        // Check if item already in cart
-        let cartItem = await Cart.findOne({ product: productId, customer: customerId });
-
-        if (cartItem) {
-            // Update quantity if already exists
-            cartItem.quantity += parseInt(quantity);
-            await cartItem.save();
-        } else {
-            // Create new cart item
-            cartItem = new Cart({
-                product: productId,
-                customer: customerId,
-                quantity: parseInt(quantity)
-            });
-            await cartItem.save();
-        }
+        const cartItem = await cartService.addItemToCart(req.body);
 
         res.status(201).json({
             success: true,
@@ -82,7 +33,14 @@ router.post('/add', async (req, res) => {
             cart: cartItem
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        const badRequestErrors = ['Missing required fields', 'Invalid product ID', 'Invalid customer ID', 'Invalid quantity'];
+        const statusCode = badRequestErrors.includes(error.message)
+            ? 400
+            : error.message === 'Product not found'
+                ? 404
+                : 500;
+
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 });
 
@@ -92,19 +50,7 @@ router.put('/update/:cartItemId', async (req, res) => {
         const { cartItemId } = req.params;
         const { quantity } = req.body;
 
-        if (!quantity || quantity < 1) {
-            return res.status(400).json({ success: false, message: "Invalid quantity" });
-        }
-
-        let cartItem = await Cart.findByIdAndUpdate(
-            cartItemId,
-            { quantity: parseInt(quantity) },
-            { new: true }
-        ).populate('product');
-
-        if (!cartItem) {
-            return res.status(404).json({ success: false, message: "Cart item not found" });
-        }
+        const cartItem = await cartService.updateItemQuantity(cartItemId, quantity);
 
         res.status(200).json({
             success: true,
@@ -112,7 +58,13 @@ router.put('/update/:cartItemId', async (req, res) => {
             cart: cartItem
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        const statusCode = error.message === 'Invalid quantity' || error.message === 'Invalid cart item ID'
+            ? 400
+            : error.message === 'Cart item not found'
+                ? 404
+                : 500;
+
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 });
 
@@ -121,18 +73,20 @@ router.delete('/remove/:cartItemId', async (req, res) => {
     try {
         const { cartItemId } = req.params;
 
-        const cartItem = await Cart.findByIdAndDelete(cartItemId);
-
-        if (!cartItem) {
-            return res.status(404).json({ success: false, message: "Cart item not found" });
-        }
+        await cartService.removeItem(cartItemId);
 
         res.status(200).json({
             success: true,
             message: "Item removed from cart successfully"
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        const statusCode = error.message === 'Invalid cart item ID'
+            ? 400
+            : error.message === 'Cart item not found'
+                ? 404
+                : 500;
+
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 });
 
@@ -141,16 +95,17 @@ router.delete('/clear/:customerId', async (req, res) => {
     try {
         const { customerId } = req.params;
 
-        const result = await Cart.deleteMany({ customer: customerId });
+        const deletedCount = await cartService.clearCustomerCart(customerId);
 
         res.status(200).json({
             success: true,
             message: "Cart cleared successfully",
-            deletedCount: result.deletedCount
+            deletedCount
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        const statusCode = error.message === 'Invalid customer ID' ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 });
 
-exports.router = router;
+module.exports = router;

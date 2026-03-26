@@ -60,17 +60,6 @@
 - **Add Items to Cart**: `POST /api/v1/cart/add` - With quantity updates
 - **View Cart**: `GET /api/v1/cart/:customerId` - With calculated totals
 - **Cart Item Population**: Shows product details with cart items
-
-### ❌ MISSING/INCOMPLETE
-- **Remove Item from Cart**: ❌ NOT IMPLEMENTED
-- **Update Item Quantity**: ❌ NOT IMPLEMENTED (only add)
-- **Clear Cart**: ❌ NOT IMPLEMENTED
-- **Cart Service Layer**: No CartService abstraction
-- **Persistent Wishlist**: Not mentioned in current implementation
-- **Move to Wishlist**: Not implemented
-- **Cart Expiration**: No session-based cart cleanup
-- **Delete Specific Items**: Route exists `/remove` but unclear if implemented
-
 ---
 
 ## 4. Order Service
@@ -138,10 +127,9 @@
 ## Architecture Issues
 
 ### Service Layer
-- ❌ **Only PaymentService** abstraction layer implemented
+- ⚠️ **PaymentService and CartService** abstraction layers implemented
 - ❌ No UserService/AuthService
 - ❌ No ProductService
-- ❌ No CartService
 - ❌ No OrderService
 - **Recommendation**: Implement service layers for all domains
 
@@ -166,29 +154,24 @@
 
 ### High Priority
 1. ✅ **Payment Service** - NOW COMPLETE
-2. **Remove Item from Cart** 
-3. **Update Cart Quantity**
-4. **Clear Cart**
-5. **Update Order Status**
-6. **Update Customer Profile**
-7. **Inventory Management & Stock Validation**
+2. **Update Order Status**
+3. **Update Customer Profile**
+4. **Inventory Management & Stock Validation**
 
 ### Medium Priority
 8. **UserService Layer** abstraction
 9. **ProductService Layer** abstraction
-10. **CartService Layer** abstraction
-11. **OrderService Layer** abstraction
-12. **Cancel Order** functionality
-13. **Search Products** functionality
-14. **Payment Gateway Integration** (Stripe/PayPal)
+10. **OrderService Layer** abstraction
+11. **Cancel Order** functionality
+12. **Search Products** functionality
+13. **Payment Gateway Integration** (Stripe/PayPal)
 
 ### Low Priority (Nice-to-Have)
-15. **Wishlist** functionality
-16. **Product Reviews & Ratings** endpoints
-17. **Order Confirmation Emails**
-18. **Refund Management UI**
-19. **Analytics Dashboard**
-20. **Pagination** across all list endpoints
+15. **Product Reviews & Ratings** endpoints
+16. **Order Confirmation Emails**
+17. **Refund Management UI**
+18. **Analytics Dashboard**
+19. **Pagination** across all list endpoints
 
 ---
 
@@ -196,12 +179,12 @@
 
 ### Immediate Actions Needed
 ```
-1. Complete Cart Service endpoints (remove, update quantity, clear)
-2. Implement OrderService abstraction
-3. Add order status update endpoint
-4. Implement inventory decrement on order
-5. Add customer profile update endpoint
-6. Add UserService abstraction
+1. Implement OrderService abstraction
+2. Add order status update endpoint
+3. Implement inventory decrement on order
+4. Add customer profile update endpoint
+5. Add UserService abstraction
+6. Implement CartService abstraction
 ```
 
 ### Integration Tasks
@@ -235,9 +218,10 @@
 | Category Management | ⚠️ | Partial (missing create/delete) |
 | Add to Cart | ✅ | Implemented |
 | View Cart | ✅ | With totals |
-| Remove from Cart | ❌ | Missing |
-| Update Cart | ❌ | Missing |
-| Clear Cart | ❌ | Missing |
+| Remove from Cart | ✅ | Implemented |
+| Update Cart | ✅ | Implemented |
+| Clear Cart | ✅ | Implemented |
+| Cart Expiration | ✅ | 30 days TTL |
 | Place Order | ✅ | From cart |
 | Order Tracking | ✅ | Status field exists |
 | Order History | ✅ | Per customer |
@@ -250,4 +234,4 @@
 
 ---
 
-**Last Updated**: March 25, 2026
+**Last Updated**: March 26, 2026
