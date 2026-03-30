@@ -1,41 +1,33 @@
 const express = require('express');
 const router = express.Router();
 exports.router = router;
-const {Product}= require("../model/product");
-const {Category}= require("../model/category");
-const mongoose = require("mongoose");
-const multer = require('multer');
+const productService = require('../services/productService');
 
 
 //GET ALL
 router.get('/',async (req,res)=>{
-    let filter = {};
-    if(req.query.categories){
-        filter = { category: { $in: req.query.categories.split(',').map(id => id.trim()) } };
+    try {
+        const productList = await productService.getProducts(req.query);
+        res.send(productList);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-    const productList = await Product.find(filter).select('name images').populate('category');
-
-    if(!productList){
-        res.status(500).json({success:false})
-    }
-
-    res.send(productList);
 })
 //GET FEATURED
 router.get(`/getfeatured/:count`, async (req, res) => {
-    const count = req.params.count ? parseInt(req.params.count) : 0;
     try {
-        const featuredProducts = await Product.find({ isFeatured: true }).limit(+count);
+        const featuredProducts = await productService.getFeaturedProducts(req.params.count);
         res.send(featuredProducts);
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        const statusCode = error.message === 'Invalid count value' ? 400 : 500;
+        res.status(statusCode).json({ success: false, message: error.message });
     }
 });
 
 //GET COUNT
 router.get('/getcount', async (req, res) => {
     try {
-        const productCount = await Product.countDocuments();
+        const productCount = await productService.getProductCount();
 
         res.send({ count: productCount });
 
@@ -46,109 +38,66 @@ router.get('/getcount', async (req, res) => {
 
 //Get product by ID
 router.get('/:id',async (req,res)=>{
-    const product = await Product.findById(req.params.id).populate('category');
-
-    if(!product){
-        res.status(500).json({success:false})
+    try {
+        const product = await productService.getProductById(req.params.id);
+        res.send(product);
+    } catch (error) {
+        const statusCode = error.message === 'Invalid product ID' ? 400 : error.message === 'Product not found' ? 404 : 500;
+        res.status(statusCode).json({ success: false, message: error.message });
     }
-
-    res.send(product);
 })
 
 //POST
 router.post('/',async (req,res)=>{
-
-    // Validate category ID format
-    if(!req.body.category){
-        return res.status(400).json({success:false, message:"Category ID is required"});
-    }
-
-    // Check if it's a valid MongoDB ObjectId format
-    if(!req.body.category.match(/^[0-9a-fA-F]{24}$/)){
-        return res.status(400).json({success:false, message:`Invalid Category ID format. Expected 24 character hex string, got "${req.body.category}"`});
-    }
-
     try {
-        const category = await Category.findById(req.body.category);
-        if(!category) return res.status(400).json({success:false, message:"Category not found in database"});
-        const filename = req.file.filename
-        const basepath = `${req.protocol}://${req.get('host')}/public/uploads/`;
+        const product = await productService.createProduct(req.body, req.file, {
+            protocol: req.protocol,
+            host: req.get('host')
+        });
 
-        let product = new Product({
-            name:req.body.name,
-            description:req.body.description,
-            richdescription:req.body.richdescription,
-            image:req.file ? `${basepath}${filename}` : '',
-            brand:req.body.brand,
-            Instock:req.body.Instock,
-            price:req.body.price,
-            category:req.body.category,
-            numReviews:req.body.numReviews,
-            rating:req.body.rating,
-            isFeatured:req.body.isFeatured,
-            dateCreated:req.body.dateCreated
-    })
-
-        product = await product.save()
-        if(!product){
-            return res.status(500).json({success:false, message:"The product cannot be created"});
-        }
-        res.status(201).json({success:true, data:product});
+        res.status(201).json({ success: true, data: product });
     } catch(error) {
-        console.log('Error creating product:', error);
-        return res.status(500).json({success:false, message:error.message});
+        const statusCode = ['Category ID is required', 'Invalid category ID'].includes(error.message)
+            ? 400
+            : error.message === 'Category not found'
+                ? 404
+                : 500;
+
+        return res.status(statusCode).json({ success: false, message: error.message });
     }
 })
 
 //UPDATE
 router.put('/:id',async (req,res)=>{
-    //product validation
-   mongoose.isValidObjectId(req.params.id) || res.status(400).json({success:false, message:"Invalid product ID format"});
+    try {
+        const product = await productService.updateProduct(req.params.id, req.body);
 
+        res.status(200).json({ success: true, data: product });
+    } catch (error) {
+        const statusCode = ['Category ID is required', 'Invalid product ID', 'Invalid category ID'].includes(error.message)
+            ? 400
+            : error.message === 'Category not found' || error.message === 'Product not found'
+                ? 404
+                : 500;
 
- //category validation
-        if(!req.body.category){
-            return res.status(400).json({success:false, message:"Category ID is required"});
-        }
-
-        const product = await Product.findByIdAndUpdate(
-            req.params.id,
-            {
-                name:req.body.name,
-            description:req.body.description,
-            richdescription:req.body.richdescription,
-            image:req.body.image,
-            brand:req.body.brand,
-            Instock:req.body.Instock,
-            price:req.body.price,
-            category:req.body.category,
-            numReviews:req.body.numReviews,
-            rating:req.body.rating,
-            isFeatured:req.body.isFeatured,
-            dateCreated:req.body.dateCreated
-            },
-            {new:true}
-        )
-
-        if(!product){
-            return res.status(500).json({success:false, message:"The product cannot be updated"});
-        }
-
-        res.status(200).json({success:true, data:product});
+        res.status(statusCode).json({ success: false, message: error.message });
+    }
 })
 
 //DELETE
 router.delete('/:id',async (req,res)=>{
-    const product = await Product.findByIdAndDelete(req.params.id).then(product=>{
-        mongoose.isValidObjectId(req.params.id) || res.status(400).json({success:false, message:"Invalid product ID format"});
+    try {
+        await productService.deleteProduct(req.params.id);
+        return res.status(200).json({ success: true, message: 'The product is deleted' });
+    } catch (error) {
+        const statusCode = error.message === 'Invalid product ID'
+            ? 400
+            : error.message === 'Product not found'
+                ? 404
+                : 500;
 
-        if(product){
-            return res.status(200).json({success:true, message:"The product is deleted"});
-        }
-    })
-    .catch(err=>{
-        return res.status(500).json({success:false, message:err}); 
-    })
+        return res.status(statusCode).json({ success: false, message: error.message });
+    }
 })
 
 

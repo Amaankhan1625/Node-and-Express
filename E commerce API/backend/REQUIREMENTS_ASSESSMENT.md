@@ -1,237 +1,219 @@
 # E-Commerce API - Requirements Assessment Report
 
 ## Summary
-**Overall Fulfillment: 65-70%** - Core structure is in place, but several important features and service layers are missing.
+Overall fulfillment is approximately 75-80% for core CRUD and checkout flow. Product, cart, order, and payment services are implemented, but there are high-impact gaps in auth behavior, customer management correctness, and production-grade payment/security practices.
 
 ---
 
-## 1. User Service (Customer Management)
+## 1. Customer/Auth Service
 
-### ✅ IMPLEMENTED
-- **User Registration**: `POST /api/v1/customers/` - Creates new customer with hashed password
-- **Authentication (Login)**: `POST /api/v1/customers/login` - Issues JWT token
-- **Password Hashing**: Uses bcrypt for secure password storage
-- **Customer Listing**: `GET /api/v1/customers/` - Get all customers
-- **Get Customer by ID**: `GET /api/v1/customers/:id`
-- **Customer Count**: `GET /api/v1/customers/getcount`
+### Implemented
+- Customer registration endpoint: `POST /api/v1/customers/`
+- Login endpoint with JWT issuance: `POST /api/v1/customers/login`
+- Customer read endpoints:
+  - `GET /api/v1/customers/`
+  - `GET /api/v1/customers/:id`
+  - `GET /api/v1/customers/getcount`
+- Password hashing with bcrypt
 
-### ❌ MISSING/INCOMPLETE
-- **Profile Management/Updates**: No endpoint to update customer profile information
-- **Password Reset/Change**: Not implemented
-- **Profile Retrieval**: No dedicated profile management endpoint
-- **User Service Layer**: No UserService abstraction (only route-level code)
-- **Address Management**: Address info stored in Customer model but no update endpoint
-- **Email Verification**: Not implemented
-- **Logout/Token Invalidation**: No logout mechanism
+### Missing or Risky
+- No profile update endpoint (`PUT/PATCH /customers/:id`)
+- No password change/reset flow
+- No email verification, logout, or token revocation list
+- No Customer service abstraction (`services/customerService.js`)
 
----
-
-## 2. Product Catalog Service
-
-### ✅ IMPLEMENTED
-- **Product Listing**: `GET /api/v1/products/` - With category filtering
-- **Get Product by ID**: `GET /api/v1/products/:id` - With category population
-- **Get Featured Products**: `GET /api/v1/products/getfeatured/:count`
-- **Product Count**: `GET /api/v1/products/getcount`
-- **Inventory Tracking**: Product model has `Instock` field (0-255)
-- **Category Management**: 
-  - `GET /api/v1/categories/` - List all
-  - `GET /api/v1/categories/:id` - Get by ID
-  - `PUT /api/v1/categories/:id` - Update category
-- **Create Products**: `POST /api/v1/products/` with image upload support
-
-### ❌ MISSING/INCOMPLETE
-- **Product Service Layer**: No ProductService abstraction
-- **Inventory Management**: 
-  - No inventory update on order placement
-  - No stock validation before order creation
-  - No low-stock alerts
-- **Search Functionality**: Only basic category filtering
-- **Product Ratings/Reviews**: Fields exist but no review endpoints
-- **Product Sorting**: Limited sorting options
-- **Bulk Operations**: No bulk update/delete
-- **Category Create/Delete**: No POST/DELETE endpoints for categories
+### Critical Findings
+- Registration path mismatch in JWT allow-list:
+  - Auth excludes `.../customers/register`, but implemented route is `POST .../customers/`.
+  - Result: registration may be blocked by global JWT middleware.
+- Customer delete route uses `Product.findByIdAndDelete` instead of `Customer.findByIdAndDelete`.
 
 ---
 
-## 3. Shopping Cart Service
+## 2. Product & Category Service
 
-### ✅ IMPLEMENTED
-- **Add Items to Cart**: `POST /api/v1/cart/add` - With quantity updates
-- **View Cart**: `GET /api/v1/cart/:customerId` - With calculated totals
-- **Cart Item Population**: Shows product details with cart items
+### Implemented
+- Product service abstraction (`services/productService.js`)
+- Product endpoints:
+  - `GET /api/v1/products/` (category filter via query)
+  - `GET /api/v1/products/:id`
+  - `GET /api/v1/products/getfeatured/:count`
+  - `GET /api/v1/products/getcount`
+  - `POST /api/v1/products/`
+  - `PUT /api/v1/products/:id`
+  - `DELETE /api/v1/products/:id`
+- Category endpoints:
+  - `GET /api/v1/categories/`
+  - `GET /api/v1/categories/:id`
+  - `POST /api/v1/categories/`
+  - `PUT /api/v1/categories/:id`
+  - `DELETE /api/v1/categories/:id`
+- Inventory field exists: `Instock`
+- Rating/review aggregate fields exist: `rating`, `numReviews`
+
+### Missing or Incomplete
+- No stock validation while adding to cart or creating orders
+- No stock decrement during order creation
+- No product search beyond category filter
+- No dedicated review endpoints
+- No pagination/sorting standard across product list responses
+
+### Important Note
+- Product create route expects `req.file` but upload middleware is not attached in the route, so file upload behavior appears incomplete.
+
+---
+
+## 3. Cart Service
+
+### Implemented
+- Cart service abstraction (`services/cartService.js`)
+- Endpoints:
+  - `GET /api/v1/cart/:customerId`
+  - `POST /api/v1/cart/add`
+  - `PUT /api/v1/cart/update/:cartItemId`
+  - `DELETE /api/v1/cart/remove/:cartItemId`
+  - `DELETE /api/v1/cart/clear/:customerId`
+- Quantity validation and object-id validation in service
+- Cart totals calculated at retrieval
+- TTL expiration enabled (`dateAdded` expires in 30 days)
+
+### Missing or Incomplete
+- No cart-level stock verification against product inventory
+- No cart endpoint pagination (not mandatory now, but needed at scale)
+
 ---
 
 ## 4. Order Service
 
-### ✅ IMPLEMENTED
-- **Place Order**: `POST /api/v1/orders/from-cart/create` - Creates order from cart items
-- **Get All Orders**: `GET /api/v1/orders/`
-- **Get Order by ID**: `GET /api/v1/orders/:id` - With populated items and products
-- **Order History**: `GET /api/v1/orders/customer/:customerId` - Sorted by date
-- **Order Status Tracking**: `status` field in Order model
-- **Order Items**: Separate OrderItem model for tracking items in orders
+### Implemented
+- Order service abstraction (`services/orderService.js`)
+- Endpoints:
+  - `GET /api/v1/orders/`
+  - `GET /api/v1/orders/:id`
+  - `GET /api/v1/orders/customer/:customerId`
+  - `POST /api/v1/orders/from-cart/create`
+  - `POST /api/v1/orders/` (legacy create)
+  - `PUT /api/v1/orders/:id` (status update)
+  - `DELETE /api/v1/orders/:id`
+- Order item model and population included
+- Cart cleanup after order-from-cart creation
 
-### ❌ MISSING/INCOMPLETE
-- **Update Order Status**: ❌ No endpoint to update order status
-- **Cancel Order**: ❌ NOT IMPLEMENTED
-- **Order Service Layer**: No OrderService abstraction
-- **Order Confirmation**: No email notification
-- **Shipping Tracking**: No shipping status updates
-- **Return/Exchange**: Not implemented
-- **Order Pagination**: No pagination for order lists
-- **Order Filtering**: Limited filtering options
-- **Inventory Decrement**: While orders are created, inventory not decremented when order placed
+### Missing or Incomplete
+- No stock decrement after successful order creation
+- No status transition rules (any status string can be applied)
+- No order cancellation policy workflow
+- No shipment/tracking integration
+- No pagination/filtering for order list endpoints
+
+### Data Model Issue
+- In `model/order.js`, `datecreated` uses `deafault` (typo) instead of `default`, so auto timestamp behavior is broken.
 
 ---
 
 ## 5. Payment Service
 
-### ✅ IMPLEMENTED (Just Added)
-- **Create Payment**: `POST /api/v1/payments/` - Supports multiple payment methods
-- **Payment Methods Supported**: 
-  - Credit Card (with Luhn validation)
-  - Debit Card
-  - PayPal
-  - Bank Transfer
-  - UPI
-  - Digital Wallet
-- **Get Payment**: `GET /api/v1/payments/:id`
-- **Get All Payments**: `GET /api/v1/payments/`
-- **Customer Payment History**: `GET /api/v1/payments/customer/:customerId`
-- **Order Payment History**: `GET /api/v1/payments/order/:orderId`
-- **Payment Processing**: `POST /api/v1/payments/:id/process`
-- **Payment Status Updates**: `PATCH /api/v1/payments/:id/status`
-- **Refund Processing**: `POST /api/v1/payments/:id/refund`
-- **Payment Statistics**: `GET /api/v1/payments/stats/report`
-- **Payment Service Layer**: Comprehensive PaymentService abstraction implemented
-- **Validation**: 
-  - Card number validation (Luhn algorithm)
-  - Email validation
-  - UPI format validation
+### Implemented
+- Payment service abstraction (`services/paymentService.js`)
+- Endpoints:
+  - `POST /api/v1/payments/`
+  - `GET /api/v1/payments/`
+  - `GET /api/v1/payments/:id`
+  - `GET /api/v1/payments/customer/:customerId`
+  - `GET /api/v1/payments/order/:orderId`
+  - `POST /api/v1/payments/:id/process`
+  - `PATCH /api/v1/payments/:id/status`
+  - `POST /api/v1/payments/:id/refund`
+  - `GET /api/v1/payments/stats/report`
+- Payment method validation and basic card/email/UPI format checks
+- Refund flow and payment statistics aggregation
 
-### ❌ MISSING/INCOMPLETE
-- **External Gateway Integration**: 
-  - ❌ Stripe integration
-  - ❌ PayPal integration
-  - ❌ Other payment gateway APIs
-  - Current implementation only stores payment data, doesn't process with real gateways
-- **Webhook Support**: No webhook handlers for payment confirmations
-- **Encryption**: Payment details (card data) should be encrypted in production
-- **PCI DSS Compliance**: Not implemented (card data storage needs encryption)
-- **Idempotency**: No idempotent payment requests
-- **Payment Reconciliation**: No reconciliation with payment gateway
+### Missing or Risky
+- No real gateway integration (Stripe/PayPal SDK/API not wired)
+- Card and CVV data are stored in plain fields (not encrypted/tokenized)
+- No webhook verification flow for external provider events
+- No idempotency keys for payment creation/processing
+- Limited compliance posture for PCI DSS requirements
 
 ---
 
-## Architecture Issues
+## Cross-Cutting Architecture Assessment
 
 ### Service Layer
-- ⚠️ **PaymentService and CartService** abstraction layers implemented
-- ❌ No UserService/AuthService
-- ❌ No ProductService
-- ❌ No OrderService
-- **Recommendation**: Implement service layers for all domains
+- Implemented for product, cart, order, payment
+- Missing for customer/auth domain
+
+### Middleware and Auth
+- Global JWT middleware enabled
+- Current `isRevoked` logic effectively blocks all non-admin tokens from protected routes
+- Public route allow-list does not align with current registration endpoint
 
 ### Error Handling
-- ⚠️ Inconsistent error response formats across routes
-- ⚠️ Missing comprehensive error handling
-- **Recommendation**: Implement centralized error handling middleware
+- Inconsistent response format between routes
+- Central error handler only handles `UnauthorizedError`; other errors are route-local
 
-### Middleware
-- ⚠️ JWT authentication exists but not fully applied
-- ⚠️ No request validation middleware
-- **Recommendation**: Add request validation and consistent auth middleware
+### Validation
+- Mostly ad-hoc validation inside route/service methods
+- No centralized schema validation (Joi/Zod/express-validator)
 
-### Database
-- ⚠️ No indexes on frequently queried fields (email, orderId, etc.)
-- ⚠️ No soft delete functionality
-- **Recommendation**: Add database indexes and soft delete support
+### Testing & Docs
+- No automated tests currently configured in package scripts
+- No OpenAPI/Swagger specification yet
 
 ---
 
-## Priority Missing Features to Implement
-
-### High Priority
-1. ✅ **Payment Service** - NOW COMPLETE
-2. **Update Order Status**
-3. **Update Customer Profile**
-4. **Inventory Management & Stock Validation**
-
-### Medium Priority
-8. **UserService Layer** abstraction
-9. **ProductService Layer** abstraction
-10. **OrderService Layer** abstraction
-11. **Cancel Order** functionality
-12. **Search Products** functionality
-13. **Payment Gateway Integration** (Stripe/PayPal)
-
-### Low Priority (Nice-to-Have)
-15. **Product Reviews & Ratings** endpoints
-16. **Order Confirmation Emails**
-17. **Refund Management UI**
-18. **Analytics Dashboard**
-19. **Pagination** across all list endpoints
-
----
-
-## Recommendations
-
-### Immediate Actions Needed
-```
-1. Implement OrderService abstraction
-2. Add order status update endpoint
-3. Implement inventory decrement on order
-4. Add customer profile update endpoint
-5. Add UserService abstraction
-6. Implement CartService abstraction
-```
-
-### Integration Tasks
-```
-1. Integrate with Stripe API for Card/Wallet payments
-2. Integrate with PayPal API
-3. Add webhook receivers for payment confirmations
-4. Implement PCI DSS compliance for card data
-```
-
-### Code Quality
-```
-1. Standardize error responses
-2. Add request validation middleware
-3. Add unit tests for services
-4. Add API documentation (Swagger/OpenAPI)
-5. Add logging and monitoring
-```
-
----
-
-## Current Coverage Matrix
+## Updated Coverage Matrix
 
 | Feature | Status | Notes |
-|---------|--------|-------|
-| User Registration | ✅ | Implemented |
-| User Login | ✅ | Implemented with JWT |
-| Profile Management | ❌ | Missing update endpoint |
-| Product Listing | ✅ | With filtering |
-| Product Details | ✅ | Fully populated |
-| Category Management | ⚠️ | Partial (missing create/delete) |
-| Add to Cart | ✅ | Implemented |
-| View Cart | ✅ | With totals |
-| Remove from Cart | ✅ | Implemented |
-| Update Cart | ✅ | Implemented |
-| Clear Cart | ✅ | Implemented |
-| Cart Expiration | ✅ | 30 days TTL |
-| Place Order | ✅ | From cart |
-| Order Tracking | ✅ | Status field exists |
-| Order History | ✅ | Per customer |
-| Update Order Status | ❌ | Missing |
-| Cancel Order | ❌ | Missing |
-| Payment Processing | ✅ | New service added |
-| Payment Gateway Integration | ❌ | Not connected to real gateways |
-| Refunds | ✅ | Service ready |
-| Order Confirmation Email | ❌ | Missing |
+|---|---|---|
+| Customer registration | ⚠️ | Implemented route exists, but auth allow-list mismatch can block it |
+| Customer login | ✅ | JWT token generated |
+| Customer profile update | ❌ | No endpoint |
+| Customer delete | ❌ | Bug: deletes Product instead of Customer |
+| Product CRUD | ✅ | Service-based implementation |
+| Category CRUD | ✅ | Implemented |
+| Product filtering | ⚠️ | Category filter only |
+| Cart add/view/update/remove/clear | ✅ | Service-based implementation |
+| Cart TTL expiration | ✅ | 30 days |
+| Order create from cart | ✅ | Implemented |
+| Order status update | ✅ | `PUT /orders/:id` |
+| Order cancellation workflow | ⚠️ | Hard delete exists; business cancellation flow not defined |
+| Inventory decrement | ❌ | Not implemented |
+| Payment CRUD/processing/refund/stats | ✅ | Service-based, simulated processing |
+| Real payment gateway integration | ❌ | Not implemented |
+| Payment data security posture | ❌ | Sensitive data not tokenized/encrypted |
 
 ---
 
-**Last Updated**: March 26, 2026
+## Prioritized Action Plan
+
+### High Priority
+1. Fix auth allow-list for customer registration route.
+2. Fix customer delete handler to use `Customer` model.
+3. Implement inventory validation/decrement in cart/order workflows.
+4. Fix order schema `datecreated` default typo.
+5. Add centralized request validation for major write endpoints.
+
+### Medium Priority
+1. Add customer profile update and password change endpoints.
+2. Add status transition rules for orders and payments.
+3. Standardize API response and error contracts.
+4. Add pagination/filtering for products and orders.
+
+### Low Priority
+1. Add product review endpoints and moderation rules.
+2. Add email notifications (order confirmation, status updates).
+3. Add analytics/reporting expansion beyond payments.
+
+---
+
+## Recommended Near-Term Deliverables (Next Sprint)
+
+1. Auth fixes + customer delete bug fix
+2. Inventory-safe checkout (stock check + decrement + rollback safety)
+3. Validation middleware rollout (customer/order/payment write routes)
+4. Basic test suite for services (cart/order/payment)
+5. OpenAPI skeleton for all existing endpoints
+
+---
+
+**Last Updated**: March 30, 2026
