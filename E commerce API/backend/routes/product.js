@@ -7,8 +7,14 @@ const productService = require('../services/productService');
 //GET ALL
 router.get('/',async (req,res)=>{
     try {
-        const productList = await productService.getProducts(req.query);
-        res.send(productList);
+        const result = await productService.getProducts(req.query);
+        res.status(200).json({ 
+            success: true, 
+            data: result.data,
+            pagination: result.pagination,
+            sortBy: result.sortBy,
+            sortOrder: result.sortOrder
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

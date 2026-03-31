@@ -53,10 +53,20 @@ class CartService {
             throw new Error('Product not found');
         }
 
+        // Validate stock availability
+        if (product.Instock < parsedQuantity) {
+            throw new Error(`Insufficient stock. Only ${product.Instock} items available`);
+        }
+
         let cartItem = await Cart.findOne({ product: productId, customer: customerId });
 
         if (cartItem) {
-            cartItem.quantity += parsedQuantity;
+            const newQuantity = cartItem.quantity + parsedQuantity;
+            // Validate total quantity after update
+            if (product.Instock < newQuantity) {
+                throw new Error(`Insufficient stock. Only ${product.Instock} items available, but ${newQuantity} requested in total`);
+            }
+            cartItem.quantity = newQuantity;
             await cartItem.save();
         } else {
             cartItem = new Cart({
@@ -78,15 +88,18 @@ class CartService {
             throw new Error('Invalid quantity');
         }
 
-        const cartItem = await Cart.findByIdAndUpdate(
-            cartItemId,
-            { quantity: parsedQuantity },
-            { new: true }
-        ).populate('product');
-
+        const cartItem = await Cart.findById(cartItemId).populate('product');
         if (!cartItem) {
             throw new Error('Cart item not found');
         }
+
+        // Validate stock availability
+        if (cartItem.product.Instock < parsedQuantity) {
+            throw new Error(`Insufficient stock. Only ${cartItem.product.Instock} items available`);
+        }
+
+        cartItem.quantity = parsedQuantity;
+        await cartItem.save();
 
         return cartItem;
     }

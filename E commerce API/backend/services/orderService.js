@@ -63,6 +63,16 @@ class OrderService {
             throw new Error('Cart items not found');
         }
 
+        // Validate stock availability for all items before creating order
+        const { Product } = require('../model/product');
+        for (const cartItem of cartItems) {
+            const product = await Product.findById(cartItem.product._id);
+            if (!product || product.Instock < cartItem.quantity) {
+                const availableStock = product ? product.Instock : 0;
+                throw new Error(`Insufficient stock for product ${cartItem.product._id}. Only ${availableStock} items available`);
+            }
+        }
+
         let totalPrice = 0;
         const orderItemIds = [];
 
@@ -96,6 +106,16 @@ class OrderService {
             throw new Error('The order cannot be saved');
         }
 
+        // Decrement stock for each product after successful order creation
+        const { Product: ProductModel } = require('../model/product');
+        for (const cartItem of cartItems) {
+            await ProductModel.findByIdAndUpdate(
+                cartItem.product._id,
+                { $inc: { Instock: -cartItem.quantity } },
+                { new: true }
+            );
+        }
+
         await Cart.deleteMany({ _id: { $in: cartItemIds } });
 
         return order;
@@ -106,14 +126,27 @@ class OrderService {
             throw new Error('Missing required fields');
         }
 
+        const { Product } = require('../model/product');
+
+        // Validate stock availability for all items before creating order
+        const productStockMap = new Map();
+        for (const orderItem of body.orderItems) {
+            if (!orderItem.product || !orderItem.quantity) {
+                throw new Error('Missing required fields');
+            }
+
+            this.validateObjectId(orderItem.product, 'product ID');
+
+            const product = await Product.findById(orderItem.product);
+            if (!product || product.Instock < orderItem.quantity) {
+                const availableStock = product ? product.Instock : 0;
+                throw new Error(`Insufficient stock for product ${orderItem.product}. Only ${availableStock} items available`);
+            }
+            productStockMap.set(orderItem.product.toString(), orderItem.quantity);
+        }
+
         const orderItemIds = await Promise.all(
             body.orderItems.map(async (orderItem) => {
-                if (!orderItem.product || !orderItem.quantity) {
-                    throw new Error('Missing required fields');
-                }
-
-                this.validateObjectId(orderItem.product, 'product ID');
-
                 let newOrderItem = new OrderItem({
                     quantity: orderItem.quantity,
                     product: orderItem.product
@@ -141,6 +174,16 @@ class OrderService {
 
         if (!order) {
             throw new Error('The order cannot be saved');
+        }
+
+        // Decrement stock for each product after successful order creation
+        const { Product: ProductModel } = require('../model/product');
+        for (const [productId, quantity] of productStockMap.entries()) {
+            await ProductModel.findByIdAndUpdate(
+                productId,
+                { $inc: { Instock: -quantity } },
+                { new: true }
+            );
         }
 
         return order;

@@ -29,7 +29,40 @@ class ProductService {
             };
         }
 
-        return Product.find(filter).select('name images').populate('category');
+        // Pagination parameters
+        const page = Math.max(1, parseInt(query.page) || 1);
+        const limit = Math.max(1, Math.min(100, parseInt(query.limit) || 10)); // Max 100 items per page
+        const skip = (page - 1) * limit;
+
+        // Sorting parameters
+        const allowedSortFields = ['name', 'price', 'rating', 'dateCreated'];
+        const sortBy = query.sortBy && allowedSortFields.includes(query.sortBy) ? query.sortBy : 'dateCreated';
+        const sortOrder = query.sortOrder === 'desc' ? -1 : 1;
+
+        // Execute count and find in parallel for better performance
+        const [total, products] = await Promise.all([
+            Product.countDocuments(filter),
+            Product.find(filter)
+                .select('name images price rating numReviews Instock dateCreated')
+                .populate('category')
+                .sort({ [sortBy]: sortOrder })
+                .skip(skip)
+                .limit(limit)
+        ]);
+
+        return {
+            data: products,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+                hasNextPage: page < Math.ceil(total / limit),
+                hasPrevPage: page > 1
+            },
+            sortBy,
+            sortOrder: sortOrder === 1 ? 'asc' : 'desc'
+        };
     }
 
     async getFeaturedProducts(countParam) {

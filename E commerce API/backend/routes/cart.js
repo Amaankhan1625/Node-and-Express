@@ -34,7 +34,8 @@ router.post('/add', async (req, res) => {
         });
     } catch (error) {
         const badRequestErrors = ['Missing required fields', 'Invalid product ID', 'Invalid customer ID', 'Invalid quantity'];
-        const statusCode = badRequestErrors.includes(error.message)
+        const isStockError = error.message.includes('Insufficient stock');
+        const statusCode = badRequestErrors.includes(error.message) || isStockError
             ? 400
             : error.message === 'Product not found'
                 ? 404
@@ -58,7 +59,8 @@ router.put('/update/:cartItemId', async (req, res) => {
             cart: cartItem
         });
     } catch (error) {
-        const statusCode = error.message === 'Invalid quantity' || error.message === 'Invalid cart item ID'
+        const isStockError = error.message.includes('Insufficient stock');
+        const statusCode = (error.message === 'Invalid quantity' || error.message === 'Invalid cart item ID' || isStockError)
             ? 400
             : error.message === 'Cart item not found'
                 ? 404
