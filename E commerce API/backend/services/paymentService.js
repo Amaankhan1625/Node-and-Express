@@ -1,72 +1,92 @@
 const { Payment } = require('../model/payment');
 const { Order } = require('../model/order');
 const { Customer } = require('../model/customer');
+const encryptionService = require('../helper/encryption');
 
 class PaymentService {
     /**
      * Create a new payment record
+     * Payment Methods: cod, card, upi, netbanking, emi
      */
     async createPayment(paymentData) {
         try {
+            const { customer, order, paymentMethod, amount, cardDetails, upiDetails, bankDetails } = paymentData;
+
             // Validate order exists
-            const order = await Order.findById(paymentData.order);
-            if (!order) {
+            const orderRecord = await Order.findById(order);
+            if (!orderRecord) {
                 throw new Error('Order not found');
             }
 
             // Validate customer exists
-            const customer = await Customer.findById(paymentData.customer);
-            if (!customer) {
+            const customerRecord = await Customer.findById(customer);
+            if (!customerRecord) {
                 throw new Error('Customer not found');
             }
 
-            // Generate transaction ID
-            const transactionId = this.generateTransactionId();
-
-            const newPayment = new Payment({
-                ...paymentData,
-                transactionId,
-                status: 'pending'
-            });
-
-            await newPayment.save();
-            return newPayment;
-        } catch (error) {
-            throw new Error(`Payment creation failed: ${error.message}`);
-        }
-    }
-
-    /**
-     * Process payment
-     */
-    async processPayment(paymentId, paymentGatewayResponse) {
-        try {
-            const payment = await Payment.findById(paymentId);
-            if (!payment) {
-                throw new Error('Payment not found');
+            // Skip payment creation for COD (Cash on Delivery)
+            if (paymentMethod === 'cod') {
+                return {
+                    customer,
+                    order,
+                    paymentMethod: 'cod',
+                    amount,
+                    status: 'pending',
+                    _id: null
+                };
             }
 
-            // Update payment status based on gateway response
-            payment.status = paymentGatewayResponse.status || 'processing';
-            payment.processedDate = new Date();
+            // Validate and process payment details based on method
+            let processedData = {};
 
-            if (paymentGatewayResponse.status === 'completed') {
-                payment.transactionId = paymentGatewayResponse.transactionId;
-                
-                // Update order status
-                const order = await Order.findById(payment.order);
-                if (order) {
-                    order.status = 'confirmed';
-                    await order.save();
+            if (paymentMethod === 'card' || paymentMethod === 'emi') {
+                if (!cardDetails) {
+                    throw new Error('Card details required for card/EMI payments');
                 }
-            } else if (paymentGatewayResponse.status === 'failed') {
-                payment.failureReason = paymentGatewayResponse.failureReason || 'Payment processing failed';
+                this.validateCardDetails(cardDetails);
+                processedData.cardDetails = {
+                    cardHolderName: cardDetails.cardHolderName,
+                    cardNumber: encryptionService.encrypt(cardDetails.cardNumber),
+                    last4Digits: String(cardDetails.cardNumber).slice(-4),
+                    expiryMonth: cardDetails.expiryMonth,
+                    expiryYear: cardDetails.expiryYear,
+                    cvv: encryptionService.encrypt(cardDetails.cvv)
+                };
             }
+
+            if (paymentMethod === 'upi') {
+                if (!upiDetails?.upiId) {
+                    throw new Error('UPI ID required for UPI payments');
+                }
+                this.validateUpiDetails(upiDetails.upiId);
+                processedData.upiDetails = { upiId: upiDetails.upiId };
+            }
+
+            if (paymentMethod === 'netbanking') {
+                if (!bankDetails) {
+                    throw new Error('Bank details required for net banking payments');
+                }
+                this.validateBankDetails(bankDetails);
+                processedData.bankDetails = {
+                    bankName: bankDetails.bankName,
+                    accountHolderName: bankDetails.accountHolderName
+                };
+            }
+
+            const payment = new Payment({
+                customer,
+                order,
+                paymentMethod,
+                amount,
+                transactionId: this.generateTransactionId(),
+                status: 'pending',
+                ...processedData
+            });
 
             await payment.save();
             return payment;
         } catch (error) {
-            throw new Error(`Payment processing failed: ${error.message}`);
+            throw new Error(`Payment creation failed: ${error.message}`);
         }
     }
 
@@ -94,11 +114,9 @@ class PaymentService {
      */
     async getCustomerPayments(customerId) {
         try {
-            const payments = await Payment.find({ customer: customerId })
+            return await Payment.find({ customer: customerId })
                 .populate('order')
                 .sort({ createdAt: -1 });
-
-            return payments;
         } catch (error) {
             throw new Error(`Failed to fetch customer payments: ${error.message}`);
         }
@@ -109,10 +127,8 @@ class PaymentService {
      */
     async getOrderPayments(orderId) {
         try {
-            const payments = await Payment.find({ order: orderId })
+            return await Payment.find({ order: orderId })
                 .populate('customer', 'name email');
-
-            return payments;
         } catch (error) {
             throw new Error(`Failed to fetch order payments: ${error.message}`);
         }
@@ -123,17 +139,28 @@ class PaymentService {
      */
     async updatePaymentStatus(paymentId, status, reason = null) {
         try {
-            const payment = await Payment.findById(paymentId);
+            if (!['pending', 'completed', 'failed', 'refunded'].includes(status)) {
+                throw new Error('Invalid payment status');
+            }
+
+            const payment = await Payment.findByIdAndUpdate(
+                paymentId,
+                {
+                    status,
+                    ...(reason && { failureReason: reason })
+                },
+                { new: true }
+            );
+
             if (!payment) {
                 throw new Error('Payment not found');
             }
 
-            payment.status = status;
-            if (reason) {
-                payment.failureReason = reason;
+            // Update order status when payment is completed
+            if (status === 'completed') {
+                await Order.findByIdAndUpdate(payment.order, { status: 'confirmed' });
             }
 
-            await payment.save();
             return payment;
         } catch (error) {
             throw new Error(`Failed to update payment status: ${error.message}`);
@@ -141,58 +168,19 @@ class PaymentService {
     }
 
     /**
-     * Refund payment
+     * Get masked card details for display (never expose full card or CVV)
      */
-    async refundPayment(paymentId, refundAmount, refundReason) {
-        try {
-            const payment = await Payment.findById(paymentId);
-            if (!payment) {
-                throw new Error('Payment not found');
-            }
-
-            if (payment.status !== 'completed') {
-                throw new Error('Only completed payments can be refunded');
-            }
-
-            if (refundAmount > payment.amount) {
-                throw new Error('Refund amount cannot exceed payment amount');
-            }
-
-            payment.refundDetails = {
-                refundAmount,
-                refundDate: new Date(),
-                refundReason,
-                refundStatus: 'pending'
-            };
-
-            payment.status = 'refunded';
-            await payment.save();
-
-            return payment;
-        } catch (error) {
-            throw new Error(`Refund failed: ${error.message}`);
+    getMaskedCardDetails(payment) {
+        if (!payment.cardDetails || !['card', 'emi'].includes(payment.paymentMethod)) {
+            return null;
         }
-    }
 
-    /**
-     * Validate payment details based on method
-     */
-    validatePaymentDetails(paymentMethod, details) {
-        const validators = {
-            creditCard: (data) => this.validateCardDetails(data),
-            debitCard: (data) => this.validateCardDetails(data),
-            paypal: (data) => this.validatePaypalDetails(data),
-            bankTransfer: (data) => this.validateBankDetails(data),
-            upi: (data) => this.validateUpiDetails(data),
-            wallet: (data) => true
+        return {
+            cardHolderName: payment.cardDetails.cardHolderName,
+            last4Digits: payment.cardDetails.last4Digits,
+            expiryMonth: payment.cardDetails.expiryMonth,
+            expiryYear: payment.cardDetails.expiryYear
         };
-
-        const validator = validators[paymentMethod];
-        if (!validator) {
-            throw new Error('Invalid payment method');
-        }
-
-        return validator(details);
     }
 
     /**
@@ -200,10 +188,9 @@ class PaymentService {
      */
     validateCardDetails(details) {
         if (!details.cardHolderName || !details.cardNumber || !details.expiryMonth || !details.expiryYear || !details.cvv) {
-            throw new Error('Invalid card details');
+            throw new Error('Invalid card details: missing required fields');
         }
 
-        // Basic card number validation (Luhn algorithm)
         if (!this.isValidCardNumber(details.cardNumber)) {
             throw new Error('Invalid card number');
         }
@@ -212,13 +199,13 @@ class PaymentService {
     }
 
     /**
-     * Validate PayPal details
+     * Validate UPI ID
      */
-    validatePaypalDetails(details) {
-        if (!details.paypalEmail || !this.isValidEmail(details.paypalEmail)) {
-            throw new Error('Invalid PayPal email');
+    validateUpiDetails(upiId) {
+        const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z]{3,}$/;
+        if (!upiRegex.test(upiId)) {
+            throw new Error('Invalid UPI ID format');
         }
-
         return true;
     }
 
@@ -226,26 +213,14 @@ class PaymentService {
      * Validate bank details
      */
     validateBankDetails(details) {
-        if (!details.accountHolderName || !details.accountNumber || !details.bankName) {
-            throw new Error('Invalid bank details');
+        if (!details.bankName || !details.accountHolderName) {
+            throw new Error('Invalid bank details: missing required fields');
         }
-
         return true;
     }
 
     /**
-     * Validate UPI details
-     */
-    validateUpiDetails(details) {
-        if (!details.upiId || !this.isValidUpi(details.upiId)) {
-            throw new Error('Invalid UPI ID');
-        }
-
-        return true;
-    }
-
-    /**
-     * Helper: Validate Luhn algorithm for card number
+     * Validate card number using Luhn algorithm
      */
     isValidCardNumber(cardNumber) {
         const cleaned = cardNumber.replace(/\s/g, '');
@@ -270,23 +245,7 @@ class PaymentService {
     }
 
     /**
-     * Helper: Validate email
-     */
-    isValidEmail(email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
-    }
-
-    /**
-     * Helper: Validate UPI ID
-     */
-    isValidUpi(upiId) {
-        const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z]{3,}$/;
-        return upiRegex.test(upiId);
-    }
-
-    /**
-     * Helper: Generate unique transaction ID
+     * Generate transaction ID
      */
     generateTransactionId() {
         return `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -297,7 +256,7 @@ class PaymentService {
      */
     async getPaymentStatistics(startDate, endDate) {
         try {
-            const stats = await Payment.aggregate([
+            return await Payment.aggregate([
                 {
                     $match: {
                         createdAt: { $gte: startDate, $lte: endDate },
@@ -314,8 +273,6 @@ class PaymentService {
                 },
                 { $sort: { totalAmount: -1 } }
             ]);
-
-            return stats;
         } catch (error) {
             throw new Error(`Failed to fetch payment statistics: ${error.message}`);
         }

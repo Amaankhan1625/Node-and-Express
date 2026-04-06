@@ -15,7 +15,7 @@ const paymentSchema = mongoose.Schema({
 
     paymentMethod: {
         type: String,
-        enum: ['creditCard', 'debitCard', 'paypal', 'bankTransfer', 'upi', 'wallet'],
+        enum: ['cod', 'card', 'upi', 'netbanking', 'emi'],
         required: true
     },
 
@@ -26,59 +26,42 @@ const paymentSchema = mongoose.Schema({
 
     status: {
         type: String,
-        enum: ['pending', 'processing', 'completed', 'failed', 'refunded'],
+        enum: ['pending', 'completed', 'failed', 'refunded'],
         default: 'pending'
     },
 
-    transactionId: {
-        type: String,
-        unique: true,
-        sparse: true
-    },
+    transactionId: String,
 
+    // For Card & EMI payments only
     cardDetails: {
         cardHolderName: String,
-        cardNumber: String, // Ideally encrypted in production
+        cardNumber: {
+            encrypted: String,
+            iv: String,
+            authTag: String
+        },
+        last4Digits: String,
         expiryMonth: String,
         expiryYear: String,
-        cvv: String // Ideally encrypted in production
-    },
-
-    paypalEmail: String,
-
-    bankDetails: {
-        accountHolderName: String,
-        accountNumber: String,
-        bankName: String,
-        routingNumber: String,
-        ifscCode: String
-    },
-
-    currency: {
-        type: String,
-        default: 'USD'
-    },
-
-    paymentDate: {
-        type: Date,
-        default: Date.now
-    },
-
-    processedDate: Date,
-
-    failureReason: String,
-
-    refundDetails: {
-        refundAmount: Number,
-        refundDate: Date,
-        refundReason: String,
-        refundStatus: {
-            type: String,
-            enum: ['pending', 'completed', 'failed']
+        cvv: {
+            encrypted: String,
+            iv: String,
+            authTag: String
         }
     },
 
-    metadata: mongoose.Schema.Types.Mixed,
+    // For UPI payments only
+    upiDetails: {
+        upiId: String
+    },
+
+    // For Net Banking payments only
+    bankDetails: {
+        bankName: String,
+        accountHolderName: String
+    },
+
+    failureReason: String,
 
     createdAt: {
         type: Date,

@@ -47,10 +47,16 @@ class OrderService {
     }
 
     async createOrderFromCart(body) {
-        const { customerId, shippingAdd1, shippingAdd2, city, zip, country, phone, cartItemIds } = body;
+        const { customerId, shippingAdd1, shippingAdd2, city, zip, country, phone, cartItemIds, paymentMethod } = body;
 
+        const validPaymentMethods = ['cod', 'card', 'upi', 'netbanking', 'emi'];
+        
         if (!customerId || !shippingAdd1 || !shippingAdd2 || !city || !zip || !country || !phone || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
             throw new Error('Missing required fields');
+        }
+
+        if (!paymentMethod || !validPaymentMethods.includes(paymentMethod)) {
+            throw new Error(`Invalid payment method. Must be one of: ${validPaymentMethods.join(', ')}`);
         }
 
         this.validateObjectId(customerId, 'customer ID');
@@ -97,6 +103,7 @@ class OrderService {
             phone,
             status: 'pending',
             totalprice: totalPrice,
+            paymentMethod,
             customer: customerId
         });
 
@@ -122,8 +129,14 @@ class OrderService {
     }
 
     async createOrderLegacy(body) {
+        const validPaymentMethods = ['cod', 'card', 'upi', 'netbanking', 'emi'];
+        
         if (!Array.isArray(body.orderItems) || body.orderItems.length === 0) {
             throw new Error('Missing required fields');
+        }
+
+        if (!body.paymentMethod || !validPaymentMethods.includes(body.paymentMethod)) {
+            throw new Error(`Invalid payment method. Must be one of: ${validPaymentMethods.join(', ')}`);
         }
 
         const { Product } = require('../model/product');
@@ -167,6 +180,7 @@ class OrderService {
             phone: body.phone,
             status: body.status,
             totalprice: body.totalprice,
+            paymentMethod: body.paymentMethod,
             customer: body.customer
         });
 

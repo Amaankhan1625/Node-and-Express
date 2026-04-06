@@ -107,16 +107,21 @@ catch(error){
 
 //delete
 router.delete('/:id',async (req,res)=>{
-    const customer = await Product.findByIdAndDelete(req.params.id).then(customer=>{
-        mongoose.isValidObjectId(req.params.id) || res.status(400).json({success:false, message:"Invalid customer ID format"});
+    if(!mongoose.isValidObjectId(req.params.id)){
+        return res.status(400).json({success:false, message:"Invalid customer ID format"});
+    }
 
-        if(customer){
-            return res.status(200).json({success:true, message:"customer is deleted"});
+    try {
+        const customer = await Customer.findByIdAndDelete(req.params.id);
+        
+        if(!customer){
+            return res.status(404).json({success:false, message:"Customer not found"});
         }
-    })
-    .catch(err=>{
-        return res.status(500).json({success:false, message:err}); 
-    })
+        
+        return res.status(200).json({success:true, message:"Customer is deleted"});
+    } catch(err){
+        return res.status(500).json({success:false, message:err.message}); 
+    }
 })
 
 

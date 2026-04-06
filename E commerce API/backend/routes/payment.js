@@ -7,30 +7,26 @@ const mongoose = require('mongoose');
 /**
  * Create a new payment
  * POST /api/v1/payments/
+ * Payment Methods: cod (Cash on Delivery), card, upi, netbanking, emi
  */
 router.post('/', async (req, res) => {
     try {
-        const { customer, order, paymentMethod, amount, cardDetails, paypalEmail, bankDetails } = req.body;
+        const { customer, order, paymentMethod, amount, cardDetails, upiDetails, bankDetails } = req.body;
 
         // Validate required fields
         if (!customer || !order || !paymentMethod || !amount) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields'
+                message: 'Missing required fields: customer, order, paymentMethod, amount'
             });
         }
 
-        // Validate payment details based on method
-        try {
-            paymentService.validatePaymentDetails(paymentMethod, {
-                cardDetails,
-                paypalEmail,
-                bankDetails
-            });
-        } catch (error) {
+        // Validate payment method
+        const validMethods = ['cod', 'card', 'upi', 'netbanking', 'emi'];
+        if (!validMethods.includes(paymentMethod)) {
             return res.status(400).json({
                 success: false,
-                message: error.message
+                message: `Invalid payment method. Must be one of: ${validMethods.join(', ')}`
             });
         }
 
@@ -40,16 +36,54 @@ router.post('/', async (req, res) => {
             paymentMethod,
             amount,
             cardDetails,
-            paypalEmail,
+            upiDetails,
             bankDetails
         };
 
         const payment = await paymentService.createPayment(paymentData);
 
+        // Return masked payment details for security
+        const responseData = payment.toObject ? payment.toObject() : payment;
+        if (payment.paymentMethod === 'card' || payment.paymentMethod === 'emi') {
+            responseData.cardDetails = paymentService.getMaskedCardDetails(payment);
+        }
+
         res.status(201).json({
             success: true,
             message: 'Payment created successfully',
-            payment
+            payment: responseData
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+/**
+ * Get all payments
+ * GET /api/v1/payments/
+ */
+router.get('/', async (req, res) => {
+    try {
+        const payments = await Payment.find()
+            .populate('customer', 'name email')
+            .populate('order')
+            .sort({ createdAt: -1 });
+
+        const maskedPayments = payments.map(payment => {
+            const data = payment.toObject();
+            if (payment.paymentMethod === 'card' || payment.paymentMethod === 'emi') {
+                data.cardDetails = paymentService.getMaskedCardDetails(payment);
+            }
+            return data;
+        });
+
+        res.status(200).json({
+            success: true,
+            count: maskedPayments.length,
+            payments: maskedPayments
         });
     } catch (error) {
         res.status(500).json({
@@ -73,10 +107,15 @@ router.get('/:id', async (req, res) => {
         }
 
         const payment = await paymentService.getPaymentById(req.params.id);
+        const responseData = payment.toObject();
+        
+        if (payment.paymentMethod === 'card' || payment.paymentMethod === 'emi') {
+            responseData.cardDetails = paymentService.getMaskedCardDetails(payment);
+        }
 
         res.status(200).json({
             success: true,
-            payment
+            payment: responseData
         });
     } catch (error) {
         res.status(404).json({
@@ -87,31 +126,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * Get all payments
- * GET /api/v1/payments/
- */
-router.get('/', async (req, res) => {
-    try {
-        const payments = await Payment.find()
-            .populate('customer', 'name email')
-            .populate('order')
-            .sort({ createdAt: -1 });
-
-        res.status(200).json({
-            success: true,
-            count: payments.length,
-            payments
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
-/**
- * Get payments for a customer
+ * Get payments by customer
  * GET /api/v1/payments/customer/:customerId
  */
 router.get('/customer/:customerId', async (req, res) => {
@@ -124,11 +139,19 @@ router.get('/customer/:customerId', async (req, res) => {
         }
 
         const payments = await paymentService.getCustomerPayments(req.params.customerId);
+        
+        const maskedPayments = payments.map(payment => {
+            const data = payment.toObject();
+            if (payment.paymentMethod === 'card' || payment.paymentMethod === 'emi') {
+                data.cardDetails = paymentService.getMaskedCardDetails(payment);
+            }
+            return data;
+        });
 
         res.status(200).json({
             success: true,
-            count: payments.length,
-            payments
+            count: maskedPayments.length,
+            payments: maskedPayments
         });
     } catch (error) {
         res.status(500).json({
@@ -139,7 +162,7 @@ router.get('/customer/:customerId', async (req, res) => {
 });
 
 /**
- * Get payments for an order
+ * Get payments by order
  * GET /api/v1/payments/order/:orderId
  */
 router.get('/order/:orderId', async (req, res) => {
@@ -152,47 +175,19 @@ router.get('/order/:orderId', async (req, res) => {
         }
 
         const payments = await paymentService.getOrderPayments(req.params.orderId);
+        
+        const maskedPayments = payments.map(payment => {
+            const data = payment.toObject();
+            if (payment.paymentMethod === 'card' || payment.paymentMethod === 'emi') {
+                data.cardDetails = paymentService.getMaskedCardDetails(payment);
+            }
+            return data;
+        });
 
         res.status(200).json({
             success: true,
-            count: payments.length,
-            payments
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
-/**
- * Process payment
- * POST /api/v1/payments/:id/process
- */
-router.post('/:id/process', async (req, res) => {
-    try {
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid payment ID'
-            });
-        }
-
-        const { transactionId, status, failureReason } = req.body;
-
-        const paymentGatewayResponse = {
-            transactionId: transactionId || `TXN-${Date.now()}`,
-            status: status || 'completed',
-            failureReason
-        };
-
-        const payment = await paymentService.processPayment(req.params.id, paymentGatewayResponse);
-
-        res.status(200).json({
-            success: true,
-            message: 'Payment processed successfully',
-            payment
+            count: maskedPayments.length,
+            payments: maskedPayments
         });
     } catch (error) {
         res.status(500).json({
@@ -217,11 +212,10 @@ router.patch('/:id/status', async (req, res) => {
 
         const { status, reason } = req.body;
 
-        const validStatuses = ['pending', 'processing', 'completed', 'failed', 'refunded'];
-        if (!validStatuses.includes(status)) {
+        if (!status) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid payment status'
+                message: 'Status is required'
             });
         }
 
@@ -233,44 +227,7 @@ router.patch('/:id/status', async (req, res) => {
             payment
         });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
-/**
- * Refund payment
- * POST /api/v1/payments/:id/refund
- */
-router.post('/:id/refund', async (req, res) => {
-    try {
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid payment ID'
-            });
-        }
-
-        const { refundAmount, refundReason } = req.body;
-
-        if (!refundAmount || !refundReason) {
-            return res.status(400).json({
-                success: false,
-                message: 'Refund amount and reason are required'
-            });
-        }
-
-        const payment = await paymentService.refundPayment(req.params.id, refundAmount, refundReason);
-
-        res.status(200).json({
-            success: true,
-            message: 'Refund processed successfully',
-            payment
-        });
-    } catch (error) {
-        res.status(500).json({
+        res.status(400).json({
             success: false,
             message: error.message
         });

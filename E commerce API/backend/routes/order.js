@@ -39,6 +39,8 @@ router.get('/:id',async (req,res)=>{
 })
 
 // POST - Create order from selected cart items
+// Required: customerId, shippingAdd1, shippingAdd2, city, zip, country, phone, cartItemIds, paymentMethod
+// Payment Methods: 'cod' (Cash on Delivery), 'card' (Credit/Debit Card), 'upi' (UPI), 'netbanking' (Net Banking), 'emi' (EMI)
 router.post('/from-cart/create', async(req,res)=>{
     try {
         const order = await orderService.createOrderFromCart(req.body);
@@ -62,6 +64,8 @@ router.post('/from-cart/create', async(req,res)=>{
 });
 
 // POST - Create order (legacy support)
+// Required: orderItems, shippingAdd1, shippingAdd2, city, zip, country, phone, status, totalprice, customer, paymentMethod
+// Payment Methods: 'cod' (Cash on Delivery), 'card' (Credit/Debit Card), 'upi' (UPI), 'netbanking' (Net Banking), 'emi' (EMI)
 router.post('/',async(req,res)=>{
     try {
         const order = await orderService.createOrderLegacy(req.body);

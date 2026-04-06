@@ -47,6 +47,11 @@ const orderschema = mongoose.Schema({
         ref:"Customer",
         required:true
     },
+    paymentMethod:{
+        type:String,
+        enum:['cod', 'card', 'upi', 'netbanking', 'emi'],
+        required:true
+    },
     datecreated:{
       type:Date,
       deafault:Date.now()
